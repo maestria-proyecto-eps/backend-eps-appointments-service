@@ -75,13 +75,14 @@ Ejemplos:
 
 # 🌳 Convención de Ramas (GitFlow Simplificado)
 
-Este proyecto utiliza un **GitFlow simplificado** para mantener orden, claridad y estabilidad en el desarrollo.
+Este proyecto utiliza un **GitFlow simplificado** con rama de QA como compuerta de calidad antes de producción.
 
 ### 📌 Estructura de ramas
 
 ```
-main
-develop
+main         ← producción
+qa           ← quality gate (validación antes de prod)
+develop      ← integración / entorno dev
 feature/*
 bugfix/*
 hotfix/*
@@ -92,22 +93,28 @@ hotfix/*
 ## 🔹 `main`
 
 * Contiene únicamente código estable y listo para producción.
-* Siempre debe estar en estado **deployable**.
+* Al hacer merge aquí se **despliega automáticamente a producción** (Render).
 * No se permite hacer push directo.
-* Solo recibe cambios desde:
-
-  * `develop` (nuevas versiones)
+* Solo recibe PRs desde:
+  * `qa` (nuevas versiones validadas)
   * `hotfix/*` (correcciones críticas)
+
+---
+
+## 🔹 `qa`
+
+* Rama de **quality gate** — validación final antes de producción.
+* **No tiene entorno de despliegue propio**, solo ejecuta CI (lint + tests).
+* Recibe PRs desde `develop`.
+* Desde aquí se abre PR hacia `main` para ir a producción.
 
 ---
 
 ## 🔹 `develop`
 
-* Rama de integración.
-* Base para nuevas funcionalidades.
-* Puede contener cambios en validación antes de llegar a producción.
+* Rama de integración y desarrollo.
+* Al hacer merge aquí se **despliega automáticamente al entorno de desarrollo** (Render).
 * Recibe merges desde:
-
   * `feature/*`
   * `bugfix/*`
   * `hotfix/*` (después de aplicar en `main`)
@@ -137,13 +144,14 @@ feature/notifications-module
 1. Se crea desde `develop`
 2. Se implementa la funcionalidad
 3. Se abre Pull Request hacia `develop`
-4. Se elimina después del merge
+4. CI valida automáticamente (lint + tests)
+5. Se elimina después del merge
 
 ---
 
 ## 🐛 `bugfix/*`
 
-Ramas para corregir errores detectados en `develop` antes de pasar a producción.
+Ramas para corregir errores detectados en `develop` o `qa` antes de pasar a producción.
 
 ### 📌 Convención de nombres
 
@@ -190,9 +198,8 @@ hotfix/crash-on-startup
 
 1. Se crea desde `main`
 2. Se corrige el problema
-3. Se hace merge hacia:
-
-   * `main`
+3. Se hace PR hacia:
+   * `main` (se despliega a producción automáticamente)
    * `develop` (obligatorio para evitar regresiones)
 4. Se elimina después del merge
 
@@ -200,8 +207,9 @@ hotfix/crash-on-startup
 
 ## 📌 Reglas Generales
 
-* ❌ No hacer push directo a `main` ni `develop`
+* ❌ No hacer push directo a `main`, `qa` ni `develop`
 * ✅ Todo cambio debe pasar por Pull Request
+* ✅ Los PRs ejecutan CI automáticamente (lint + tests)
 * ✅ Mantener nombres descriptivos y en kebab-case
 * ✅ Eliminar ramas después del merge
 * ✅ Mantener commits claros y atómicos
@@ -211,17 +219,55 @@ hotfix/crash-on-startup
 ## 🔁 Flujo General
 
 ```
-feature/* → develop → main
-bugfix/*  → develop → main
-hotfix/*  → main → develop
+feature/* ──PR──→ develop ──PR──→ qa ──PR──→ main
+bugfix/*  ──PR──→ develop ──PR──→ qa ──PR──→ main
+hotfix/*  ──PR──→ main + develop
 ```
 
-Este modelo permite:
+---
 
-* Separar desarrollo de producción
-* Mantener estabilidad en `main`
-* Trabajar en paralelo sin conflictos
-* Aplicar correcciones críticas sin afectar el flujo normal
+## 🚀 CI/CD y Entornos
 
-```
+### Integración Continua (CI) — `ci.yml`
+
+Se ejecuta automáticamente al abrir un **Pull Request** hacia `develop`, `qa` o `main`:
+
+* **Lint** — flake8 (errores de sintaxis Python)
+* **Tests** — pytest (si existen tests en el repo)
+
+> El PR no debe mergearse si CI falla.
+
+### Despliegue Continuo (CD) — Render Auto-Deploy (Docker)
+
+El servicio está **dockerizado**. Render detecta automáticamente el `Dockerfile` y construye la imagen del contenedor.
+
+Render está configurado con **"Auto-Deploy: After CI Checks Pass"**, lo que significa que el despliegue se dispara automáticamente cuando:
+
+1. Un PR se mergea a la rama configurada en Render
+2. Los checks de CI en GitHub pasan exitosamente
+3. Render construye la imagen Docker y despliega el contenedor
+
+| Rama | Entorno | Servicio Render |
+|---|---|---|
+| `develop` | Development | Servicio apuntando a rama `develop` |
+| `main` | Production | Servicio apuntando a rama `main` |
+
+> `qa` no tiene despliegue — funciona como compuerta de calidad (solo CI).
+>
+> **No se necesita workflow de CD** (`cd.yml`) para los backends — Render maneja el deploy de forma nativa.
+
+### 🐳 Docker
+
+El proyecto incluye un `Dockerfile` optimizado para producción:
+
+* **Base**: `python:3.12-slim` (imagen ligera)
+* **Layer caching**: Las dependencias se instalan antes de copiar el código (builds más rápidos)
+* **Puerto**: Se usa la variable `$PORT` inyectada por Render (default: 10000)
+* **`.dockerignore`**: Excluye archivos innecesarios (tests, .git, .env, etc.)
+
+Para correr localmente con Docker:
+
+```bash
+docker build -t backend-eps-appointments-service .
+docker run -p 8000:8000 -e PORT=8000 backend-eps-appointments-service
 ```
