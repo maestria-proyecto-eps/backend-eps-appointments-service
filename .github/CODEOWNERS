@@ -1,0 +1,14 @@
+# CODEOWNERS — Reviewers requeridos para PRs
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Cuando se crea un PR que toca cualquier archivo (*),
+# GitHub solicita automáticamente review a estos usuarios.
+# Si "Require review from Code Owners" está activado en Branch Protection,
+# el PR NO se puede mergear sin su aprobación.
+#
+# Roles:
+#   QA:           @Rack99
+#   Scrum Master: @gyuheeJo
+#   PO:           @David-S-Botero
+
+* @Rack99 @gyuheeJo @David-S-Botero
