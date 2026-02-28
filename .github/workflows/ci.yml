@@ -43,3 +43,27 @@ jobs:
           else
             echo "No tests found — skipping"
           fi
+
+  branch-policy:
+    name: Branch Policy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR source branch
+        run: |
+          TARGET="${{ github.base_ref }}"
+          SOURCE="${{ github.head_ref }}"
+          echo "PR: $SOURCE → $TARGET"
+
+          # main solo acepta PRs desde qa o hotfix/*
+          if [[ "$TARGET" == "main" && "$SOURCE" != "qa" && ! "$SOURCE" =~ ^hotfix/ ]]; then
+            echo "❌ PRs a main solo se permiten desde qa o hotfix/*"
+            exit 1
+          fi
+
+          # qa solo acepta PRs desde develop
+          if [[ "$TARGET" == "qa" && "$SOURCE" != "develop" ]]; then
+            echo "❌ PRs a qa solo se permiten desde develop"
+            exit 1
+          fi
+
+          echo "✅ Branch policy OK: $SOURCE → $TARGET"
