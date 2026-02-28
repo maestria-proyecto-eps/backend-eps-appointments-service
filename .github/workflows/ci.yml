@@ -39,7 +39,7 @@ jobs:
         run: |
           if [ -d "tests" ] && find tests -name "test_*.py" | grep -q .; then
             pip install pytest
-            pytest tests/ -v
+            PYTHONPATH=. pytest tests/ -v
           else
             echo "No tests found — skipping"
           fi
