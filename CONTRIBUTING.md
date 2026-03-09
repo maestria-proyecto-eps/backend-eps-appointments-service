@@ -9,6 +9,10 @@ app/
 ├── schemas/
 ├── services/
 ├── core/
+├── db/
+├── Dockerfile
+├── .dockerignore
+├── requirements.txt
 ```
 
 ---
@@ -271,3 +275,48 @@ Para correr localmente con Docker:
 docker build -t backend-eps-appointments-service .
 docker run -p 8000:8000 -e PORT=8000 backend-eps-appointments-service
 ```
+
+---
+
+## 📝 Estructura de Commits
+
+Para mantener un historial claro y útil, sigue esta convención de commits:
+
+### Formato
+
+```
+<tipo>(<alcance>): <descripción corta>
+
+[descripción larga opcional]
+```
+
+### Tipos de commit
+
+* `feat`: Nueva funcionalidad
+* `fix`: Corrección de bug
+* `docs`: Cambios en documentación
+* `style`: Cambios de formato (sin afectar código)
+* `refactor`: Refactorización de código
+* `test`: Agregar o modificar tests
+* `chore`: Tareas de mantenimiento (dependencias, config, etc.)
+
+### Ejemplos
+
+```bash
+feat(auth): agregar endpoint de login con JWT
+
+fix(users): corregir validación de email en creación de usuario
+
+docs(readme): actualizar instrucciones de instalación
+
+refactor(db): optimizar consultas de usuarios
+
+test(auth): agregar tests para endpoint de login
+```
+
+### Reglas
+
+* Usa el presente del indicativo ("agregar" no "agregué")
+* No termines la descripción con punto
+* La descripción corta debe tener máximo 50 caracteres
+* El alcance es opcional pero recomendado (módulo afectado)
