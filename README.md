@@ -88,7 +88,7 @@ pip freeze > requirements.txt
 Desde la raíz del proyecto:
 
 ```bash
-uvicorn main:app --reload
+python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 Acceder a:
