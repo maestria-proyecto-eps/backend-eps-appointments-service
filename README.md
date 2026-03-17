@@ -88,7 +88,7 @@ pip freeze > requirements.txt
 Desde la raíz del proyecto:
 
 ```bash
-uvicorn main:app --reload
+uvicorn app.main:app --reload
 ```
 
 Acceder a:

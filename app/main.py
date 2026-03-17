@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from core.logger import setup_logging, get_logger
+from app.core.logger import setup_logging
+from app.routers import appointments_router, health_router
 
 app = FastAPI(
     title="EPS API 2",
@@ -23,22 +24,5 @@ setup_logging()
 # Logger call example
 #logger = get_logger(__name__)
 
-@app.get("/")
-def root():
-    """Root endpoint"""
-    #logger.info("Root endpoint called")
-    return {
-        "message": "EPS API",
-        "features": [
-            "EPS management API"
-        ],
-        "docs": "/docs",
-        "redoc": "/redoc"
-    }
-
-@app.get("/health")
-def root():
-    """health endpoint"""
-    return {
-        "message": "ok"
-    }
+app.include_router(health_router)
+app.include_router(appointments_router)
