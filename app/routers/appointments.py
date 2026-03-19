@@ -34,7 +34,7 @@ def get_authenticated_patient_id(
 
         raise HTTPException(
             status_code=401,
-            detail="Missing authenticated patient id in X-Patient-Id header",
+            detail="Falta el identificador del paciente autenticado en el encabezado X-Patient-Id",
         )
     return x_patient_id
 
@@ -46,13 +46,13 @@ def get_authenticated_patient_id(
     description=(
         "Crea una cita para el paciente autenticado. "
         "Valida disponibilidad del slot en agenda, remisión cuando aplica, "
-        "máximo de 3 citas futuras activas y fecha mayor a la fecha actual."
+        "máximo de 3 citas futuras activas y que la fecha/hora seleccionada sea posterior a la hora actual."
     ),
     responses={
         400: {"description": "Error de validación de negocio"},
         401: {"description": "Paciente no autenticado"},
-        404: {"description": "Slot no encontrado"},
-        409: {"description": "Slot no disponible"},
+        404: {"description": "Horario no encontrado"},
+        409: {"description": "Horario no disponible"},
     },
 )
 def create_appointment_endpoint(
@@ -98,7 +98,7 @@ def list_appointments_endpoint(
     summary="Mis citas",
     description=(
         "Retorna las citas del paciente autenticado separadas en "
-        "future (agenda.fecha >= hoy) y past (agenda.fecha < hoy)."
+        "future (agenda.fecha >= fecha actual) y past (agenda.fecha < fecha actual)."
     ),
     responses={401: {"description": "Paciente no autenticado"}},
 )

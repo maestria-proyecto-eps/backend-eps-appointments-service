@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import HTTPException
 from sqlalchemy import text
@@ -82,7 +82,7 @@ def _fetch_appointment_by_id(db: Session, id_cita: int) -> dict:
     ).mappings().first()
 
     if not row:
-        raise HTTPException(status_code=404, detail="Appointment not found")
+        raise HTTPException(status_code=404, detail="Cita no encontrada")
     return _row_to_appointment(row)
 
 
@@ -95,11 +95,17 @@ def create_appointment(
     fecha,
     hora_inicio,
 ) -> dict:
-    today = date.today()
-    if fecha <= today:
+    # Normalize client-provided time to server-local naive time for consistent comparisons and SQL filtering.
+    slot_time = hora_inicio.replace(tzinfo=None) if getattr(hora_inicio, "tzinfo", None) else hora_inicio
+
+    now = datetime.now()
+    selected_slot = datetime.combine(fecha, slot_time)
+    today = now.date()
+
+    if selected_slot <= now:
         raise HTTPException(
             status_code=400,
-            detail="fecha must be greater than current server date",
+            detail="La cita seleccionada debe ser posterior a la hora actual del servidor",
         )
 
     with db.begin():
@@ -119,15 +125,15 @@ def create_appointment(
                 "id_doctor": id_doctor,
                 "id_especialidad": id_especialidad,
                 "fecha": fecha,
-                "hora_inicio": hora_inicio,
+                "hora_inicio": slot_time,
             },
         ).mappings().first()
 
         if not agenda_row:
-            raise HTTPException(status_code=404, detail="Slot not found in agenda")
+            raise HTTPException(status_code=404, detail="Horario no encontrado en la agenda")
 
         if agenda_row["estado"] not in AVAILABLE_AGENDA_STATES:
-            raise HTTPException(status_code=409, detail="Slot is not available")
+            raise HTTPException(status_code=409, detail="El horario no esta disponible")
 
         future_active_count = db.execute(
             text(
@@ -136,16 +142,23 @@ def create_appointment(
                 FROM public.citas c
                 JOIN public.agenda a ON a.id_agenda = c.id_agenda
                 WHERE c.id_paciente = :id_paciente
-                  AND a.fecha > :today
+                  AND (
+                      a.fecha > :today
+                      OR (a.fecha = :today AND a.hora_inicio > :current_time)
+                  )
                 """
             ),
-            {"id_paciente": id_paciente, "today": today},
+            {
+                "id_paciente": id_paciente,
+                "today": today,
+                "current_time": now.time(),
+            },
         ).scalar_one()
 
         if future_active_count >= 3:
             raise HTTPException(
                 status_code=400,
-                detail="Patient already has 3 future active appointments",
+                detail="El paciente ya tiene 3 citas futuras activas",
             )
 
         if _requires_referral(db, id_especialidad):
@@ -170,7 +183,7 @@ def create_appointment(
             if not has_valid_referral:
                 raise HTTPException(
                     status_code=400,
-                    detail="Valid referral is required for this specialty",
+                    detail="Se requiere una remision valida para esta especialidad",
                 )
 
         id_cita = None

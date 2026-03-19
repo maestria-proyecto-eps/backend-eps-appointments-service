@@ -5,7 +5,7 @@ from app.routers import appointments_router, health_router
 
 app = FastAPI(
     title="EPS API 2",
-    description="EPS management API 2",
+    description="API de gestion EPS 2",
     version="0.1"
 )
 

@@ -1,9 +1,20 @@
 from datetime import date, time
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class AppointmentCreateRequest(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id_especialidad": 1,
+                "id_doctor": 71332991,
+                "fecha": "2026-03-23",
+                "hora_inicio": "08:00:00",
+            }
+        }
+    )
+
     id_especialidad: int
     id_doctor: int
     fecha: date
