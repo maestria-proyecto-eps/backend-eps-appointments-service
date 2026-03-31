@@ -4,21 +4,22 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, Query, HTTPException
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db, get_db_admin, get_db_operativa # Importamos las nuevas sesiones
+from app.db.session import get_db, get_db_admin, get_db_operativa
 from app.schemas.appointments import (
     AppointmentCreateRequest,
     AppointmentOut,
     MyAppointmentsResponse,
 )
-from app.schemas.availability import DoctorAvailabilityOut # Tu nuevo esquema
+
+from app.schemas.availability import DoctorAvailabilityOut
 from app.services.appointments_service import (
     create_appointment,
     list_appointments,
     list_my_appointments,
 )
-from app.services.availability_service import get_availability_slots # Tu nuevo servicio
-router = APIRouter(prefix="/api", tags=["appointments"])
+from app.services.availability_service import get_availability_slots
 
+router = APIRouter(prefix="/api", tags=["appointments"])
 
 def get_authenticated_patient_id(
     x_patient_id: Annotated[
@@ -109,33 +110,31 @@ def list_my_appointments_endpoint(
 ) -> dict:
     return list_my_appointments(db, id_paciente=id_paciente)
 
+def get_authenticated_patient_id(
+        x_patient_id: Annotated[int | None, Header(alias="X-Patient-Id")] = None
+) -> int:
+    if x_patient_id is None:
+        raise HTTPException(status_code=401, detail="Falta el identificador del paciente")
+    return x_patient_id
+
 @router.get(
     "/appointments/availability",
     response_model=list[DoctorAvailabilityOut],
-    summary="Consultar disponibilidad de agendas",
-    description=(
-            "Retorna los horarios disponibles agrupados por medico. "
-            "Valida especialidad activa y remision vigente si la especialidad lo requiere."
-    ),
+    summary="Consultar disponibilidad",
     responses={
-        403: {"description": "Paciente no cuenta con remision vigente"},
+        403: {"description": "Sin remision vigente"},
         404: {"description": "Especialidad no encontrada"},
-    },
+    }
 )
-
 def get_availability_endpoint(
-        specialty_id: int = Query(..., description="ID de la especialidad requerida"),
-        startDate: date = Query(..., description="Fecha inicial del rango (YYYY-MM-DD)"),
-        endDate: date = Query(..., description="Fecha final del rango (YYYY-MM-DD)"),
-        doctor_id: int | None = Query(None, description="Filtro opcional por ID de doctor"),
+        specialty_id: int = Query(..., description="ID especialidad"),
+        startDate: date = Query(..., description="Fecha inicial (YYYY-MM-DD)"),
+        endDate: date = Query(..., description="Fecha final (YYYY-MM-DD)"),
+        doctor_id: int | None = Query(None, description="Filtro opcional por doctor"),
         db_admin: Session = Depends(get_db_admin),
         db_operativa: Session = Depends(get_db_operativa),
         id_paciente: int = Depends(get_authenticated_patient_id),
-) -> list[dict]:
-    """
-    Coordina la consulta entre la base administrativa (reglas)
-    y la operativa (slots) a traves del service.
-    """
+):
     return get_availability_slots(
         db_admin=db_admin,
         db_operativa=db_operativa,
