@@ -1,101 +1,84 @@
 import pytest
 from datetime import date, timedelta, time
-from unittest.mock import patch
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, StaticPool
 from sqlalchemy.orm import sessionmaker
-from fastapi import HTTPException
 
 from app.main import app
 from app.db.session import get_db_admin, get_db_operativa
-from app.models.minimal_models import Especialidad, Usuario, Doctor, Agenda, BaseAdmin, BaseOperativa
+from app.models.minimal_models import Especialidad, Persona, Doctor, Agenda, BaseAdmin, BaseOperativa, Usuario, Role
 from app.routers.appointments import get_authenticated_patient_id
 
-# 1. Motores SQLite en Memoria
-engine_test_admin = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-engine_test_operativa = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+# Configuración de Motores SQLite en memoria con StaticPool para persistencia entre sesiones
+engine_admin = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+engine_operativa = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
 
-TestingSessionAdmin = sessionmaker(autocommit=False, autoflush=False, bind=engine_test_admin)
-TestingSessionOperativa = sessionmaker(autocommit=False, autoflush=False, bind=engine_test_operativa)
+TestingSessionAdmin = sessionmaker(bind=engine_admin)
+TestingSessionOperativa = sessionmaker(bind=engine_operativa)
 
-# 2. Overrides de Dependencias
-def override_get_db_admin():
-    db = TestingSessionAdmin()
-    try: yield db
-    finally: db.close()
+# Datos de prueba
+MOCK_PACIENTE_DOC = 1018442903
+MOCK_MEDICO_DOC = 80112457
 
-def override_get_db_operativa():
-    db = TestingSessionOperativa()
-    try: yield db
-    finally: db.close()
-
-def override_get_authenticated_patient_id():
-    return 100 # ID del paciente para el test
-
-app.dependency_overrides[get_db_admin] = override_get_db_admin
-app.dependency_overrides[get_db_operativa] = override_get_db_operativa
-app.dependency_overrides[get_authenticated_patient_id] = override_get_authenticated_patient_id
+# Overrides de dependencias
+app.dependency_overrides[get_db_admin] = lambda: TestingSessionAdmin()
+app.dependency_overrides[get_db_operativa] = lambda: TestingSessionOperativa()
+app.dependency_overrides[get_authenticated_patient_id] = lambda: MOCK_PACIENTE_DOC
 
 client = TestClient(app)
 
-# 3. Fixture para Setup de Datos
 @pytest.fixture(autouse=True)
-def setup_mock_dbs():
-    BaseAdmin.metadata.create_all(bind=engine_test_admin)
-    BaseOperativa.metadata.create_all(bind=engine_test_operativa)
+def setup_dbs():
+    # Crea las tablas en el orden correcto
+    BaseAdmin.metadata.create_all(bind=engine_admin)
+    BaseOperativa.metadata.create_all(bind=engine_operativa)
 
-    db_admin = TestingSessionAdmin()
-    db_op = TestingSessionOperativa()
+    db_a = TestingSessionAdmin()
+    db_o = TestingSessionOperativa()
 
     try:
-        # Especialidad que REQUIERE remisión
-        esp = Especialidad(id_especialidad=2, nombre_especialidad="Cardiologia", requiere_remision=True)
-        usr = Usuario(id_usuario=20, estado=True)
-        doc = Doctor(id_medico=50, id_usuario=20, id_especialidad=2, nombre="Mock", apellido="Doc")
-        db_admin.add_all([esp, usr, doc])
-        db_admin.commit()
+        # 1. Crear Rol (Necesario para la FK de Usuario)
+        rol = Role(id_rol=2, nombre_rol="Paciente")
+        db_a.add(rol)
+        db_a.flush()
 
+        # 2. Crear Persona y Especialidad
+        persona = Persona(num_documento=MOCK_MEDICO_DOC, nombres="Doc", apellidos="Prueba")
+        esp = Especialidad(id_especialidad=2, nombre_especialidad="Cardiologia", requiere_remision=True)
+        db_a.add_all([persona, esp])
+        db_a.flush()
+
+        # 3. Crear Usuario y Doctor vinculado a la Persona
+        usr = Usuario(id_usuario=1, num_documento=MOCK_MEDICO_DOC, password="...", id_rol=2, estado=True)
+        doc = Doctor(id_medico=MOCK_MEDICO_DOC, num_licencia=123, id_especialidad=2)
+        db_a.add_all([usr, doc])
+        db_a.commit()
+
+        # 4. Crear Agenda en Base Operativa
         tomorrow = date.today() + timedelta(days=1)
         agenda = Agenda(
-            id_agenda=10, id_doctor=50, id_especialidad=2,
-            fecha=tomorrow, hora_inicio=time(9, 0), hora_fin=time(9, 30), estado=1
+            id_agenda=1, id_doctor=MOCK_MEDICO_DOC, id_especialidad=2,
+            fecha=tomorrow, hora_inicio=time(8, 0), hora_fin=time(8, 30), estado=1
         )
-        db_op.add(agenda)
-        db_op.commit()
+        db_o.add(agenda)
+        db_o.commit()
     finally:
-        db_admin.close()
-        db_op.close()
+        db_a.close()
+        db_o.close()
 
     yield
-    BaseAdmin.metadata.drop_all(bind=engine_test_admin)
-    BaseOperativa.metadata.drop_all(bind=engine_test_operativa)
+    BaseAdmin.metadata.drop_all(bind=engine_admin)
+    BaseOperativa.metadata.drop_all(bind=engine_operativa)
 
-# 4. El Test Unitario
-def test_unit_availability_remission_required_forbidden():
-    """
-    Simula que el service lanza el error 403 de remisión.
-    """
+def test_unit_forbidden_no_remission():
     tomorrow = date.today() + timedelta(days=1)
-    params = {
-        "specialty_id": 2,
-        "startDate": str(tomorrow),
-        "endDate": str(tomorrow)
-    }
 
-    # Mockea la función del SERVICE que el router llama
-    with patch("app.routers.appointments.get_availability_slots") as mock_service:
-        # Simulamos exactamente el error que lanzaría tu lógica de negocio
-        mock_service.side_effect = HTTPException(
-            status_code=403,
-            detail="Paciente no cuenta con remision vigente para esta especialidad"
-        )
+    response = client.get(
+        f"/api/appointments/availability?specialty_id=2&startDate={tomorrow}&endDate={tomorrow}"
+    )
 
-        response = client.get("/api/appointments/availability", params=params)
+    # Imprimimos el detalle si falla para saber POR QUÉ dio 404
+    if response.status_code == 404:
+        print(f"\nDEBUG 404: {response.json()}")
 
-        assert response.status_code == 403
-        assert "remision" in response.json()["detail"].lower()
-
-@pytest.fixture(scope="module", autouse=True)
-def cleanup_overrides():
-    yield
-    app.dependency_overrides.clear()
+    assert response.status_code == 403

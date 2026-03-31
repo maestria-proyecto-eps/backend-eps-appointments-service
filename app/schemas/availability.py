@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from datetime import date, time
+from typing import List
 
 class SlotOut(BaseModel):
     id_agenda: int
@@ -8,7 +9,6 @@ class SlotOut(BaseModel):
     hora_fin: time
 
 class DoctorAvailabilityOut(BaseModel):
-    id_doctor: int
-    nombres: str
-    apellidos: str
-    slots: list[SlotOut]
+    id_medico: int
+    nombre_medico: str
+    slots: List[SlotOut]

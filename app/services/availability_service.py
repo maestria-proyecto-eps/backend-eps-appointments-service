@@ -1,9 +1,8 @@
 from datetime import date
 from sqlalchemy.orm import Session
-from fastapi import HTTPException, status
-
-from app.models.minimal_models import Especialidad, Remision, Doctor, Usuario, Agenda
-from app.schemas.availability import DoctorAvailabilityOut
+from fastapi import HTTPException
+from app.models.minimal_models import Especialidad, Doctor, Persona, Agenda, Remision
+from app.schemas.availability import DoctorAvailabilityOut, SlotOut
 
 def get_availability_slots(
         db_admin: Session,
@@ -13,84 +12,68 @@ def get_availability_slots(
         start_date: date,
         end_date: date,
         doctor_id: int | None = None
-) -> list[dict]:
-    """
-    Evalua reglas de negocio en la DB Administrativa y retorna
-    los slots disponibles consultados en la DB Operativa.
-    """
+) -> list[DoctorAvailabilityOut]:
 
-    # 1. Validacion de la especialidad (Admin DB)
-    especialidad = db_admin.query(Especialidad).filter(
-        Especialidad.id_especialidad == specialty_id
-    ).first()
-
+    # 1. Validar Especialidad en BD Admin
+    especialidad = db_admin.query(Especialidad).filter(Especialidad.id_especialidad == specialty_id).first()
     if not especialidad:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="La especialidad proporcionada no existe."
-        )
+        raise HTTPException(status_code=404, detail="Especialidad no encontrada")
 
-    # 2. Validacion de remision vigente (Admin DB)
+    # 2. Validar Remisión en BD Operativa (si aplica)
     if especialidad.requiere_remision:
-        remision_valida = db_admin.query(Remision).filter(
+        remision_activa = db_operativa.query(Remision).filter(
             Remision.id_paciente == id_paciente,
             Remision.id_especialidad == specialty_id,
-            Remision.expiracion > date.today()
+            Remision.expiracion >= date.today()
         ).first()
 
-        if not remision_valida:
+        if not remision_activa:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="El paciente requiere una remision vigente para esta especialidad."
+                status_code=403,
+                detail="El paciente no cuenta con una remisión vigente para esta especialidad."
             )
 
-    # 3. Obtencion de medicos activos (Admin DB)
-    query_doctores = db_admin.query(Doctor).join(
-        Usuario, Doctor.id_usuario == Usuario.id_usuario
-    ).filter(
-        Doctor.id_especialidad == specialty_id,
-        Usuario.estado == True
-    )
-
-    if doctor_id:
-        query_doctores = query_doctores.filter(Doctor.id_medico == doctor_id)
-
-    doctores_activos = query_doctores.all()
-
-    if not doctores_activos:
-        return []
-
-    # Se crea un diccionario para acceso rapido a los datos del doctor
-    dict_doctores = {
-        doc.id_medico: f"{doc.nombre} {doc.apellido}" for doc in doctores_activos
-    }
-    lista_ids_doctores = list(dict_doctores.keys())
-
-    # 4. Obtencion de slots disponibles (Operativa DB)
-    agendas_disponibles = db_operativa.query(Agenda).filter(
+    # 3. Buscar slots en BD Operativa
+    query_agenda = db_operativa.query(Agenda).filter(
         Agenda.id_especialidad == specialty_id,
-        Agenda.id_doctor.in_(lista_ids_doctores),
         Agenda.fecha >= start_date,
         Agenda.fecha <= end_date,
-        Agenda.estado == 1
-    ).order_by(Agenda.fecha.asc(), Agenda.hora_inicio.asc()).all()
+        Agenda.estado == 1 # Disponible
+    )
+    if doctor_id:
+        query_agenda = query_agenda.filter(Agenda.id_doctor == doctor_id)
 
-    # 5. Agrupacion de resultados
-    resultado_agrupado = {}
-    for agenda in agendas_disponibles:
+    agendas = query_agenda.all()
+
+    if not agendas:
+        return []
+
+    # 4. Agrupar por doctor y cruzar con BD Admin para obtener nombres
+    doctor_ids = list(set([a.id_doctor for a in agendas]))
+    doctores_admin = db_admin.query(Doctor).join(Persona).filter(Doctor.id_medico.in_(doctor_ids)).all()
+
+    map_doctores = {
+        d.id_medico: f"{d.persona.nombres} {d.persona.apellidos}"
+        for d in doctores_admin
+    }
+
+    # 5. Construir respuesta
+    agrupado = {}
+    for agenda in agendas:
         doc_id = agenda.id_doctor
-        if doc_id not in resultado_agrupado:
-            resultado_agrupado[doc_id] = {
-                "id_doctor": doc_id,
-                "nombre_completo": dict_doctores[doc_id],
+        if doc_id not in agrupado:
+            agrupado[doc_id] = {
+                "id_medico": doc_id,
+                "nombre_medico": map_doctores.get(doc_id, "Médico Desconocido"),
                 "slots": []
             }
+        agrupado[doc_id]["slots"].append(
+            SlotOut(
+                id_agenda=agenda.id_agenda,
+                fecha=agenda.fecha,
+                hora_inicio=agenda.hora_inicio,
+                hora_fin=agenda.hora_fin
+            )
+        )
 
-        resultado_agrupado[doc_id]["slots"].append({
-            "id_agenda": agenda.id_agenda,
-            "fecha": agenda.fecha,
-            "hora_inicio": agenda.hora_inicio,
-            "hora_fin": agenda.hora_fin
-        })
-
-    return list(resultado_agrupado.values())
+    return [DoctorAvailabilityOut(**data) for data in agrupado.values()]
