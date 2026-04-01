@@ -1,6 +1,7 @@
 from datetime import date, time
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, StringConstraints
 
 
 class AppointmentCreateRequest(BaseModel):
@@ -38,3 +39,11 @@ class AppointmentOut(BaseModel):
 class MyAppointmentsResponse(BaseModel):
     future: list[AppointmentOut]
     past: list[AppointmentOut]
+
+
+class AppointmentCancelRequest(BaseModel):
+    razon: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
+class AppointmentCancelResponse(BaseModel):
+    message: str
