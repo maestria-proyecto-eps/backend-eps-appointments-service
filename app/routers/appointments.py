@@ -1,10 +1,10 @@
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, Header, Query, HTTPException
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
+from app.db.session import get_db, get_db_admin, get_db_operativa
 from app.schemas.appointments import (
     AppointmentCancelRequest,
     AppointmentCancelResponse,
@@ -12,15 +12,17 @@ from app.schemas.appointments import (
     AppointmentOut,
     MyAppointmentsResponse,
 )
+
+from app.schemas.availability import DoctorAvailabilityOut
 from app.services.appointments_service import (
     cancel_appointment,
     create_appointment,
     list_appointments,
     list_my_appointments,
 )
+from app.services.availability_service import get_availability_slots
 
 router = APIRouter(prefix="/api", tags=["appointments"])
-
 
 def get_authenticated_patient_id(
     x_patient_id: Annotated[
