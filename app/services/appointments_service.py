@@ -314,3 +314,74 @@ def list_my_appointments(db: Session, *, id_paciente: int) -> dict:
             past.append(item)
 
     return {"future": future, "past": past}
+
+
+def cancel_appointment(
+    db: Session,
+    *,
+    id_cita: int,
+    id_paciente: int,
+    razon: str,
+) -> dict:
+    _ = razon
+
+    with db.begin():
+        appointment_row = db.execute(
+            text(
+                """
+                SELECT
+                    c.id_cita,
+                    c.id_paciente,
+                    c.id_agenda,
+                    a.fecha,
+                    a.hora_inicio
+                FROM public.citas c
+                JOIN public.agenda a ON a.id_agenda = c.id_agenda
+                WHERE c.id_cita = :id_cita
+                FOR UPDATE
+                """
+            ),
+            {"id_cita": id_cita},
+        ).mappings().first()
+
+        if not appointment_row:
+            raise HTTPException(status_code=404, detail="Cita no encontrada")
+
+        if appointment_row["id_paciente"] != id_paciente:
+            raise HTTPException(status_code=403, detail="No autorizado para cancelar esta cita")
+
+        appointment_datetime = datetime.combine(
+            appointment_row["fecha"],
+            appointment_row["hora_inicio"],
+        )
+        if appointment_datetime <= datetime.now():
+            raise HTTPException(
+                status_code=422,
+                detail="Solo se pueden cancelar citas futuras",
+            )
+
+        db.execute(
+            text(
+                """
+                UPDATE public.agenda
+                SET estado = :available_state
+                WHERE id_agenda = :id_agenda
+                """
+            ),
+            {
+                "available_state": 1,
+                "id_agenda": appointment_row["id_agenda"],
+            },
+        )
+
+        db.execute(
+            text(
+                """
+                DELETE FROM public.citas
+                WHERE id_cita = :id_cita
+                """
+            ),
+            {"id_cita": id_cita},
+        )
+
+    return {"message": "Cita cancelada exitosamente"}

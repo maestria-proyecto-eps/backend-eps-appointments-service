@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db, get_db_admin, get_db_operativa
 from app.schemas.appointments import (
+    AppointmentCancelRequest,
+    AppointmentCancelResponse,
     AppointmentCreateRequest,
     AppointmentOut,
     MyAppointmentsResponse,
@@ -13,6 +15,7 @@ from app.schemas.appointments import (
 
 from app.schemas.availability import DoctorAvailabilityOut
 from app.services.appointments_service import (
+    cancel_appointment,
     create_appointment,
     list_appointments,
     list_my_appointments,
@@ -110,37 +113,28 @@ def list_my_appointments_endpoint(
 ) -> dict:
     return list_my_appointments(db, id_paciente=id_paciente)
 
-def get_authenticated_patient_id(
-        x_patient_id: Annotated[int | None, Header(alias="X-Patient-Id")] = None
-) -> int:
-    if x_patient_id is None:
-        raise HTTPException(status_code=401, detail="Falta el identificador del paciente")
-    return x_patient_id
 
-@router.get(
-    "/appointments/availability",
-    response_model=list[DoctorAvailabilityOut],
-    summary="Consultar disponibilidad",
+@router.put(
+    "/appointments/{id}/cancel",
+    response_model=AppointmentCancelResponse,
+    summary="Cancelar cita",
+    description="Permite al paciente autenticado cancelar una cita futura de su propiedad.",
     responses={
-        403: {"description": "Sin remision vigente"},
-        404: {"description": "Especialidad no encontrada"},
-    }
+        401: {"description": "Paciente no autenticado"},
+        403: {"description": "Cita no pertenece al paciente autenticado"},
+        404: {"description": "Cita no encontrada"},
+        422: {"description": "Solo se pueden cancelar citas futuras"},
+    },
 )
-def get_availability_endpoint(
-        specialty_id: int = Query(..., description="ID especialidad"),
-        startDate: date = Query(..., description="Fecha inicial (YYYY-MM-DD)"),
-        endDate: date = Query(..., description="Fecha final (YYYY-MM-DD)"),
-        doctor_id: int | None = Query(None, description="Filtro opcional por doctor"),
-        db_admin: Session = Depends(get_db_admin),
-        db_operativa: Session = Depends(get_db_operativa),
-        id_paciente: int = Depends(get_authenticated_patient_id),
-):
-    return get_availability_slots(
-        db_admin=db_admin,
-        db_operativa=db_operativa,
+def cancel_appointment_endpoint(
+    id: int,
+    payload: AppointmentCancelRequest,
+    db: Session = Depends(get_db),
+    id_paciente: int = Depends(get_authenticated_patient_id),
+) -> dict:
+    return cancel_appointment(
+        db,
+        id_cita=id,
         id_paciente=id_paciente,
-        specialty_id=specialty_id,
-        start_date=startDate,
-        end_date=endDate,
-        doctor_id=doctor_id
+        razon=payload.razon,
     )
