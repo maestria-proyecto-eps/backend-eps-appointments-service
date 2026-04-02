@@ -43,7 +43,34 @@ def get_authenticated_patient_id(
         )
     return x_patient_id
 
-
+@router.get(
+    "/appointments/availability",
+    response_model=list[DoctorAvailabilityOut],
+    summary="Consultar disponibilidad",
+    responses={
+        403: {"description": "Sin remision vigente"},
+        404: {"description": "Especialidad no encontrada"},
+    }
+)
+def get_availability_endpoint(
+        specialty_id: int = Query(..., description="ID especialidad"),
+        startDate: date = Query(..., description="Fecha inicial (YYYY-MM-DD)"),
+        endDate: date = Query(..., description="Fecha final (YYYY-MM-DD)"),
+        doctor_id: int | None = Query(None, description="Filtro opcional por doctor"),
+        db_admin: Session = Depends(get_db_admin),
+        db_operativa: Session = Depends(get_db_operativa),
+        id_paciente: int = Depends(get_authenticated_patient_id),
+):
+    return get_availability_slots(
+        db_admin=db_admin,
+        db_operativa=db_operativa,
+        id_paciente=id_paciente,
+        specialty_id=specialty_id,
+        start_date=startDate,
+        end_date=endDate,
+        doctor_id=doctor_id
+    )
+    
 @router.post(
     "/appointments",
     response_model=AppointmentOut,
