@@ -47,3 +47,8 @@ class AppointmentCancelRequest(BaseModel):
 
 class AppointmentCancelResponse(BaseModel):
     message: str
+
+
+class AppointmentStatisticOut(BaseModel):
+    fecha: date
+    numero_citas: int
