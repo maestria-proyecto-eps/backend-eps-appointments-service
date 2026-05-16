@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import text
@@ -385,3 +385,55 @@ def cancel_appointment(
         )
 
     return {"message": "Cita cancelada exitosamente"}
+
+
+def get_appointments_statistic(
+    db: Session,
+    *,
+    start_date: date,
+    end_date: date,
+) -> list[dict]:
+    if start_date > end_date:
+        raise HTTPException(
+            status_code=400,
+            detail="La fecha inicial no puede ser mayor que la fecha final",
+        )
+
+    rows = db.execute(
+        text(
+            """
+            SELECT
+                a.fecha AS fecha,
+                COUNT(c.id_cita) AS numero_citas
+            FROM citas c
+            JOIN agenda a ON a.id_agenda = c.id_agenda
+            WHERE a.fecha BETWEEN :start_date AND :end_date
+            GROUP BY a.fecha
+            ORDER BY a.fecha
+            """
+        ),
+        {
+            "start_date": start_date,
+            "end_date": end_date,
+        },
+    ).mappings().all()
+
+    counts_by_date = {}
+    for row in rows:
+        row_date = row["fecha"]
+        if isinstance(row_date, str):
+            row_date = date.fromisoformat(row_date)
+        counts_by_date[row_date] = int(row["numero_citas"])
+
+    result = []
+    current_date = start_date
+    while current_date <= end_date:
+        result.append(
+            {
+                "fecha": current_date,
+                "numero_citas": counts_by_date.get(current_date, 0),
+            }
+        )
+        current_date += timedelta(days=1)
+
+    return result

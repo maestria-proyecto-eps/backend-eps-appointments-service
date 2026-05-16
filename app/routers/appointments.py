@@ -10,6 +10,7 @@ from app.schemas.appointments import (
     AppointmentCancelResponse,
     AppointmentCreateRequest,
     AppointmentOut,
+    AppointmentStatisticOut,
     MyAppointmentsResponse,
 )
 
@@ -17,6 +18,7 @@ from app.schemas.availability import DoctorAvailabilityOut
 from app.services.appointments_service import (
     cancel_appointment,
     create_appointment,
+    get_appointments_statistic,
     list_appointments,
     list_my_appointments,
 )
@@ -164,4 +166,22 @@ def cancel_appointment_endpoint(
         id_cita=id,
         id_paciente=id_paciente,
         razon=payload.razon,
+    )
+
+
+@router.get(
+    "/appointments/statistic",
+    response_model=list[AppointmentStatisticOut],
+    summary="Estadística de citas",
+    description="Devuelve el número de citas por día dentro de un rango de fechas.",
+)
+def get_appointments_statistic_endpoint(
+    startDate: date = Query(..., description="Fecha inicial (YYYY-MM-DD)."),
+    endDate: date = Query(..., description="Fecha final (YYYY-MM-DD)."),
+    db_operativa: Session = Depends(get_db_operativa),
+) -> list[dict]:
+    return get_appointments_statistic(
+        db_operativa,
+        start_date=startDate,
+        end_date=endDate,
     )
