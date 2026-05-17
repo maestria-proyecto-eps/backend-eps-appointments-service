@@ -1,15 +1,15 @@
 from typing import Generator
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text, NullPool
 from sqlalchemy.orm import sessionmaker, declarative_base
 from app.core.config import settings
+from app.core.auth_utils import get_current_user_id
+from fastapi import Depends
 
 # --- CONFIGURACION BASE DE DATOS ADMINISTRATIVA ---
 # El motor administrativo se encarga de la gestion de medicos, usuarios y especialidades.
 engine_admin = create_engine(
     settings.DB_ADMIN_URL,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
+    poolclass=NullPool
 )
 
 SessionLocalAdmin = sessionmaker(
@@ -24,9 +24,7 @@ BaseAdmin = declarative_base()
 # El motor operativo gestiona las agendas, horarios y transacciones de citas.
 engine_operativa = create_engine(
     settings.DB_OPERATIVA_URL,
-    pool_pre_ping=True,
-    pool_size=15, # Se asigna un pool mayor por la alta concurrencia de transacciones.
-    max_overflow=25,
+    poolclass=NullPool
 )
 
 SessionLocalOperativa = sessionmaker(
@@ -47,6 +45,10 @@ def get_db_admin() -> Generator:
     db = SessionLocalAdmin()
     try:
         yield db
+        db.commit()       
+    except Exception:
+        db.rollback() 
+        raise
     finally:
         db.close()
 
@@ -58,16 +60,50 @@ def get_db_operativa() -> Generator:
     db = SessionLocalOperativa()
     try:
         yield db
+        db.commit()       
+    except Exception:
+        db.rollback() 
+        raise
     finally:
         db.close()
+        
+        
+def get_db_admin_audit(
+    user_id: int = Depends(get_current_user_id)
+):
+    db = SessionLocalAdmin()
 
-def get_db() -> Generator:
-    """
-    Mantiene compatibilidad con el codigo preexistente apuntando
-    por defecto a la base de datos operativa.
-    """
-    db = SessionLocalOperativa()
     try:
+        db.execute(
+            text("SET LOCAL my.app_user_id = :uid"),
+            {"uid": str(user_id)}
+        )
         yield db
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        raise
+
+    finally:
+        db.close()
+        
+def get_db_operativa_audit(
+    user_id: int = Depends(get_current_user_id)
+):
+    db = SessionLocalOperativa()
+
+    try:
+        db.execute(
+            text("SET LOCAL my.app_user_id = :uid"),
+            {"uid": str(user_id)}
+        )
+        yield db
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        raise
+
     finally:
         db.close()

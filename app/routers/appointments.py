@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, Query, HTTPException
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db, get_db_admin, get_db_operativa
+from app.db.session import get_db_admin_audit, get_db_operativa_audit
 from app.schemas.appointments import (
     AppointmentCancelRequest,
     AppointmentCancelResponse,
@@ -23,6 +23,7 @@ from app.services.appointments_service import (
     list_my_appointments,
 )
 from app.services.availability_service import get_availability_slots
+from app.core.dependencias import RequireRole
 
 router = APIRouter(prefix="/api", tags=["appointments"])
 
@@ -52,15 +53,16 @@ def get_authenticated_patient_id(
     responses={
         403: {"description": "Sin remision vigente"},
         404: {"description": "Especialidad no encontrada"},
-    }
+    },
+    dependencies=[Depends(RequireRole(["Paciente"]))]
 )
 def get_availability_endpoint(
         specialty_id: int = Query(..., description="ID especialidad"),
         startDate: date = Query(..., description="Fecha inicial (YYYY-MM-DD)"),
         endDate: date = Query(..., description="Fecha final (YYYY-MM-DD)"),
         doctor_id: int | None = Query(None, description="Filtro opcional por doctor"),
-        db_admin: Session = Depends(get_db_admin),
-        db_operativa: Session = Depends(get_db_operativa),
+        db_admin: Session = Depends(get_db_admin_audit),
+        db_operativa: Session = Depends(get_db_operativa_audit),
         id_paciente: int = Depends(get_authenticated_patient_id),
 ):
     return get_availability_slots(
@@ -88,10 +90,11 @@ def get_availability_endpoint(
         404: {"description": "Horario no encontrado"},
         409: {"description": "Horario no disponible"},
     },
+    dependencies=[Depends(RequireRole(["Paciente"]))]
 )
 def create_appointment_endpoint(
     payload: AppointmentCreateRequest,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_operativa_audit),
     id_paciente: int = Depends(get_authenticated_patient_id),
 ) -> dict:
     return create_appointment(
@@ -109,13 +112,14 @@ def create_appointment_endpoint(
     response_model=list[AppointmentOut],
     summary="Listar citas",
     description="Lista citas con filtros opcionales por fecha, estado, especialidad y doctor.",
+    dependencies=[Depends(RequireRole(["Paciente", "Médico"]))]
 )
 def list_appointments_endpoint(
     fecha: date | None = Query(default=None, description="Filtra por agenda.fecha (YYYY-MM-DD)."),
     estado: int | None = Query(default=None, description="Filtra por agenda.estado."),
     id_especialidad: int | None = Query(default=None, description="Filtra por agenda.id_especialidad."),
     id_doctor: int | None = Query(default=None, description="Filtra por agenda.id_doctor."),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_operativa_audit),
 ) -> list[dict]:
     return list_appointments(
         db,
@@ -135,9 +139,10 @@ def list_appointments_endpoint(
         "future (agenda.fecha >= fecha actual) y past (agenda.fecha < fecha actual)."
     ),
     responses={401: {"description": "Paciente no autenticado"}},
+    dependencies=[Depends(RequireRole(["Paciente"]))]
 )
 def list_my_appointments_endpoint(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_operativa_audit),
     id_paciente: int = Depends(get_authenticated_patient_id),
 ) -> dict:
     return list_my_appointments(db, id_paciente=id_paciente)
@@ -154,11 +159,12 @@ def list_my_appointments_endpoint(
         404: {"description": "Cita no encontrada"},
         422: {"description": "Solo se pueden cancelar citas futuras"},
     },
+    dependencies=[Depends(RequireRole(["Paciente"]))]
 )
 def cancel_appointment_endpoint(
     id: int,
     payload: AppointmentCancelRequest,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_operativa_audit),
     id_paciente: int = Depends(get_authenticated_patient_id),
 ) -> dict:
     return cancel_appointment(
@@ -174,11 +180,12 @@ def cancel_appointment_endpoint(
     response_model=list[AppointmentStatisticOut],
     summary="Estadística de citas",
     description="Devuelve el número de citas por día dentro de un rango de fechas.",
+    dependencies=[Depends(RequireRole(["Talento Humano"]))]
 )
 def get_appointments_statistic_endpoint(
     startDate: date = Query(..., description="Fecha inicial (YYYY-MM-DD)."),
     endDate: date = Query(..., description="Fecha final (YYYY-MM-DD)."),
-    db_operativa: Session = Depends(get_db_operativa),
+    db_operativa: Session = Depends(get_db_operativa_audit),
 ) -> list[dict]:
     return get_appointments_statistic(
         db_operativa,

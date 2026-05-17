@@ -108,7 +108,7 @@ def create_appointment(
             detail="La cita seleccionada debe ser posterior a la hora actual del servidor",
         )
 
-    with db.begin():
+    with db.begin_nested():
         agenda_row = db.execute(
             text(
                 """
@@ -230,7 +230,7 @@ def create_appointment(
                 "id_agenda": agenda_row["id_agenda"],
             },
         )
-
+    db.commit()
     return _fetch_appointment_by_id(db, id_cita)
 
 
@@ -325,7 +325,7 @@ def cancel_appointment(
 ) -> dict:
     _ = razon
 
-    with db.begin():
+    with db.begin_nested():
         appointment_row = db.execute(
             text(
                 """
@@ -383,7 +383,7 @@ def cancel_appointment(
             ),
             {"id_cita": id_cita},
         )
-
+    db.commit()  
     return {"message": "Cita cancelada exitosamente"}
 
 

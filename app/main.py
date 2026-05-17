@@ -29,22 +29,3 @@ setup_logging()
 
 app.include_router(health_router)
 app.include_router(appointments_router)
-
-
-async def _database_exception_response(_: Request, __: Exception) -> JSONResponse:
-    return JSONResponse(
-        status_code=503,
-        content={
-            "detail": "Error de conexion con la base de datos. Verifica credenciales y disponibilidad del servicio.",
-        },
-    )
-
-
-@app.exception_handler(SQLAlchemyError)
-async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError) -> JSONResponse:
-    return await _database_exception_response(request, exc)
-
-
-@app.exception_handler(DBAPIError)
-async def dbapi_exception_handler(request: Request, exc: DBAPIError) -> JSONResponse:
-    return await _database_exception_response(request, exc)
